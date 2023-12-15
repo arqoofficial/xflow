@@ -43,7 +43,7 @@ mlflow server --backend-store-uri postgresql://mlflow:mlflow@localhost/mlflow --
 ### Start tracking
 
 ```
-python ./src/airflow/dags/dags.py
+python ./src/airflow/dags/lab3/dags.py
 ```
 ## Results
 
