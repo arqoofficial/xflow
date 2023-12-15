@@ -2,7 +2,7 @@ import pendulum
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
-from data_process import *
+from dags.data_process import *
 
 default_args = dict(
     start_date=pendulum.datetime(2023, 12, 15, tz="UTC"),
