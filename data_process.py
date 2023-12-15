@@ -270,14 +270,9 @@ def read_data(**kwargs):
 
 def preprocess_data(**kwargs):
     logger.debug("Data preprocessing was started")
-    try:
-        kwargs["ti"]
-        ti = kwargs["ti"]
-        df = ti.xcom_pull(task_ids="read_data")
-        logger.debug("XFlow")
-    except KeyError:
-        df = kwargs["df"]
-        logger.debug("Usual use")
+    kwargs["ti"]
+    ti = kwargs["ti"]
+    df = ti.xcom_pull(task_ids="read_data")
     df = _drop_duplicates(df)
     df = _drop_na(df)
     df = _drop_outliers(df, PARAMS["drop_outliers"])
@@ -288,63 +283,40 @@ def preprocess_data(**kwargs):
 
 def prepare_model(**kwargs):
     logger.debug("Model preparation was started")
-    try:
-        kwargs["ti"]
-        ti = kwargs["ti"]
-        X_train, _, y_train, _ = ti.xcom_pull(task_ids="preprocess_data")
-        type_of_use = "XFlow"
-    except KeyError:
-        X_train, _, y_train, _ = kwargs["data"]
-        type_of_use = "Usual use"
-    logger.debug(type_of_use)
+    kwargs["ti"]
+    ti = kwargs["ti"]
+    X_train, _, y_train, _ = ti.xcom_pull(task_ids="preprocess_data")
     model = _prepare_knr(X_train, y_train, PARAMS["train"])
-
-    if type_of_use == "XFlow":
-        mlflow.set_tracking_uri("http://mlflow_server:5000")
-        try:
-            mlflow.create_experiment("demo_data_process_flow")
-        except Exception as e:
-            logger.info(f"Got exception when mlflow.create_experiment: {e}")
-        experiment = mlflow.set_experiment("demo_data_process_flow")
-        with mlflow.start_run(experiment_id=experiment.experiment_id) as run:
-            mlflow.log_params(PARAMS["train"])
-            result = mlflow.sklearn.log_model(
-                sk_model=model,
-                artifact_path="models",
-                registered_model_name="KNeighborsRegressor",
-            )
-            return result.model_uri
-    else:
-        return model
+    mlflow.set_tracking_uri("http://localhost:5000")
+    try:
+        mlflow.create_experiment("demo_data_process_flow")
+    except Exception as e:
+        logger.info(f"Got exception when mlflow.create_experiment: {e}")
+    experiment = mlflow.set_experiment("demo_data_process_flow")
+    with mlflow.start_run(experiment_id=experiment.experiment_id) as run:
+        mlflow.log_params(PARAMS["train"])
+        result = mlflow.sklearn.log_model(
+            sk_model=model,
+            artifact_path="models",
+            registered_model_name="KNeighborsRegressor",
+        )
+        return result.model_uri
 
 
 def evaluate_model(**kwargs):
     logger.debug("Model evaluation was started")
-    try:
-        kwargs["ti"]
-        ti = kwargs["ti"]
-        _, X_test, _, y_test = ti.xcom_pull(task_ids="preprocess_data")
-        model_uri = ti.xcom_pull(task_ids="prepare_model")
-        logger.info(f"model_uri: {model_uri}")
-        type_of_use = "XFlow"
-    except KeyError:
-        _, X_test, _, y_test = kwargs["data"]
-        model: KNeighborsRegressor = kwargs["model"]
-        type_of_use = "Usual use"
-    logger.debug(type_of_use)
+    ti = kwargs["ti"]
+    _, X_test, _, y_test = ti.xcom_pull(task_ids="preprocess_data")
+    model_uri = ti.xcom_pull(task_ids="prepare_model")
+    
+    mlflow.set_tracking_uri("http://localhost:5000")
+    
+    model = mlflow.pyfunc.load_model(model_uri=model_uri)
+    logger.info(f"model_uri: {model_uri}")
+
     y_prediction = model.predict(X_test)
     extended_scores = _get_extended_scores(y_test, y_prediction)
 
-    if type_of_use == "XFlow":
-        mlflow.set_tracking_uri("http://mlflow_server:5000")
-        model = mlflow.pyfunc.load_model(model_uri=model_uri)
-        experiment = mlflow.set_experiment("demo_data_process_flow_check_model")
-        with mlflow.start_run(experiment_id=experiment.experiment_id) as run:
-            mlflow.log_metrics(extended_scores)
-
-
-if __name__ == "__main__":
-    df = read_data()
-    preprocessed_data = preprocess_data(df=df)
-    model = prepare_model(data=preprocessed_data)
-    evaluate_model(model=model, data=preprocessed_data)
+    experiment = mlflow.set_experiment("demo_data_process_flow_check_model")
+    with mlflow.start_run(experiment_id=experiment.experiment_id) as run:
+        mlflow.log_metrics(extended_scores)
